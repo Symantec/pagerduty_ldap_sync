@@ -1,11 +1,11 @@
-#Deactivate and expire sessions of users not active in your LDAP instance
+#Delete pagerduty users not active in your LDAP instance
 
 ##How to use with just docker.
 
 - docker build -t slack_ldap_sync .
 - docker run -it -e SLACK_MAX_DELETE_FAILSAFE="0.2" \
+-e PAGERDUTY_API_KEY="foobarbazqux"
 -e SLACK_TOKEN="xoxp-exampletokenfoobarbazqux" \
--e SLACK_SUBDOMAIN="https://team.slack.com" \
 -e SLACK_SYNC_RUN_INTERVAL="1800" \
 -e AD_URL="ldaps://ldap.example.com:636" \
 -e AD_BASEDN="ou=people,DC=example,DC=com" \

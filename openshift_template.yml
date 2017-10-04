@@ -32,7 +32,7 @@
                   - -c
                   - |
                      . /root/source
-                     exec /src/slack_ldap_sync.py
+                     exec /src/pagerduty_ldap_sync.py
                 name: "pagerduty-ldap-sync-container"
                 image: "${image_url}"
                 volumeMounts:

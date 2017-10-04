@@ -4,9 +4,11 @@ import json
 import logging
 import ldap
 import os
+import pygerduty.v2
 import requests
 import time
 from ldap.controls.libldap import SimplePagedResultsControl
+from pagerduty_user_delete import main as lfepp_delete_pagerduty_user
 
 logger = logging.getLogger('pagerduty_ldap_sync')
 
@@ -14,13 +16,12 @@ logger = logging.getLogger('pagerduty_ldap_sync')
 # will raise exception if you try to delete more slack users than 20% of the total slack users.
 # This is in case ldap returns an empty list, or a truncated list.
 # We don't want LDAP issues to cause everyone in slack to be deleted.
-max_delete_failsafe = float(os.environ.get('SLACK_MAX_DELETE_FAILSAFE', 0.2))
+max_delete_failsafe = float(os.environ.get('PAGERDUTY_MAX_DELETE_FAILSAFE', 0.2))
 slack_token         = os.environ.get('SLACK_TOKEN')
-slack_scim_token    = 'Bearer %s' % slack_token
-slack_api_host      = 'https://api.slack.com'
-slack_subdomain     = os.environ.get('SLACK_SUBDOMAIN')  # eg. https://foobar.slack.com
-slack_http_header   = {'content-type': 'application/json', 'Authorization': slack_scim_token}
 slack_icon_emoji    = os.environ.get('SLACK_ICON_EMOJI', ':scream_cat:')
+# pagerduty vars
+pagerduty_api_key   = os.environ.get('PAGERDUTY_API_KEY')
+pagerduty_url       = os.environ.get('PAGERDUTY_URL')
 # 'ldaps://ad.example.com:636', make sure you always use ldaps
 ad_url              = os.environ.get('AD_URL')
 ad_basedn           = os.environ.get('AD_BASEDN')
@@ -33,11 +34,15 @@ page_size           = 5000
 trace_level         = 0
 # '["uid", "active_employee_attribute"]'
 searchreq_attrlist  = json.loads(os.environ.get('AD_SEARCHREQ_ATTRLIST'))
-sync_run_interval   = float(os.environ.get('SLACK_SYNC_RUN_INTERVAL', '3600'))
+sync_run_interval   = 14400.0
 
 
-def get_all_pagerduty_users():
-  return True
+def get_all_pagerduty_users(pagerduty):
+  all_pagerduty_users = []
+  for pagerduty_user in pagerduty.users.list():
+    pagerduty_user_json = pagerduty_user.to_json()
+    all_pagerduty_users.append((pagerduty_user_json['email'], pagerduty_user_json['id']))
+  return all_pagerduty_users
 
 
 def get_all_active_ad_users():
@@ -80,63 +85,52 @@ def get_all_active_ad_users():
   return all_ad_users
 
 
-def get_owner_users():
-  url = '%s/api/users.list' % slack_subdomain
-  http_response = requests.get(url=url, params={'token': slack_token})
-  http_response.raise_for_status()
-  users = http_response.json()['members']
-  owner_users = {}
-  for user in users:
-    if user.get('is_owner'):
-      owner_users[user['id']] = user['profile']['email']
-  return owner_users
-
-
-def slack_message_owners(message, owners):
-  url = '%s/api/chat.postMessage' % slack_subdomain
+def slack_message_pagerduty_channel(message):
   message = '```%s```' % message
-  for owner in owners.keys():
-    payload = {
-      'token'     : slack_token,
-      'channel'   : owner,
-      'text'      : message,
-      'username'  : 'slack reaper',
-      'icon_emoji': slack_icon_emoji
-    }
-    http_response = requests.get(url=url, params=payload)
-    http_response.raise_for_status()
+  payload = {
+    'token'     : slack_token,
+    'channel'   : '#pagerduty',
+    'text'      : message,
+    'username'  : 'pagerduty reaper',
+    'icon_emoji': slack_icon_emoji
+  }
+  http_response = requests.post(url=slack_token, data=json.dumps(payload))
+  http_response.raise_for_status()
   return True
 
 
-def sync_slack_ldap():
+def get_pagerduty_users_not_in_ldap(all_pagerduty_users, all_active_ldap_users):
+  pagerduty_users_not_in_ldap = []
+  for pagerduty_user in all_pagerduty_users:
+    if pagerduty_user[0] not in all_active_ldap_users:
+      pagerduty_users_not_in_ldap.append(pagerduty_user)
+  return pagerduty_users_not_in_ldap
+
+
+def delete_pagerduty_user(pagerduty_api_key, pagerduty_user_email):
+  result = lfepp_delete_pagerduty_user(pagerduty_api_key, pagerduty_user_email, 'noreply@example.com')
+  return result
+
+
+def sync_pagerduty_ldap():
   logger.info('Looking for pagerduty users to delete that do not exist or are not active in corp LDAP')
-  all_slack_owners          = get_owner_users()
-  all_pagerduty_users       = get_all_pagerduty_users()
-  all_ad_users              = get_all_active_ad_users()
-  slack_users_to_be_deleted = {}
-
-  # Collect all the users who should be deleted.
-  for pagerduty_user in pagerduty_users:
-    slack_user_email = slack_user['emails'][0]['value'].lower()
-    # skip slack users that are already disabled ( active: False )
-    if not slack_user['active']:
-      continue
-    # skip guest / bot accounts
-    if guest_users.get(slack_user['id']) or '@slack-bots.com' in slack_user_email:
-      continue
-    # Since slack has infinite web/mobile session cookies, we will disable those sessions if the users ldap account doesn't exist
-    if not all_ad_users.get(slack_user_email):
-      slack_users_to_be_deleted[slack_user_email] = {'slack_id': slack_user['id'], 'reason': 'they do not exist in corp LDAP.'}
-
-  percent_slack_users_deleted = float(len(slack_users_to_be_deleted)) / len(all_slack_users)
+  pagerduty                     = pygerduty.v2.PagerDuty(pagerduty_api_key)
+  all_pagerduty_users           = get_all_pagerduty_users(pagerduty)
+  all_active_ldap_users         = get_all_active_ad_users()
+  pagerduty_users_to_be_deleted = get_pagerduty_users_not_in_ldap(all_pagerduty_users, all_active_ldap_users)
+  percent_slack_users_deleted   = float(len(pagerduty_users_to_be_deleted)) / len(all_pagerduty_users)
   # raise exception if we try to delete too many users as a failsafe.
 
   if percent_slack_users_deleted > max_delete_failsafe:
     raise Exception('The failsafe threshold for deleting too many slack users was reached. No users were deleted.')
 
+  # delete_pagerduty_users_msg = 'The following pagerduty users should be deleted: %s' % str(pagerduty_users_to_be_deleted)
+  # delete_pagerduty_users_msg += '. This script codebase is located here: https://github.com/Symantec/pagerduty_ldap_sync'
+  # slack_message_pagerduty_channel(str(delete_pagerduty_users_msg))
+
   # After the failsafe is over, go through and delete all the users who should be deleted.
-  for slack_email, value in slack_users_to_be_deleted.iteritems():
-    disable_slack_user(slack_id=value['slack_id'], slack_email=slack_email, reason=value['reason'], owners=all_slack_owners)
+  for pagerduty_id in pagerduty_users_to_be_deleted:
+    slack_message_pagerduty_channel(delete_pagerduty_user(pagerduty_api_key, pagerduty_id))
 
 
 if __name__ == '__main__':
@@ -145,16 +139,15 @@ if __name__ == '__main__':
   error_counter = 0
   while True:
     try:
-      sync_slack_ldap()
+      sync_pagerduty_ldap()
       error_counter = 0
     except Exception as error:
       logger.exception(error)
       # if we regularly have exceptions, let slack owners know about it once per day.
       error_counter += 1
       if error_counter % 48 == 4:
-        slack_error = 'This exception is being sent to slack since it is the 4th one is a row. %s' % error
-        owners = get_owner_users()
-        slack_message_owners(slack_error, owners)
+        pagerduty_sync_error = 'This exception is being sent to slack since it is the 4th one is a row. %s' % error
+        slack_message_pagerduty_channel(pagerduty_sync_error)
     sleep_message = 'Sleeping for %s minutes' % str(int(sync_run_interval) / 60)
     logger.info(sleep_message)
     time.sleep(sync_run_interval)
