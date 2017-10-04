@@ -1,0 +1,56 @@
+---
+  kind: "Template"
+  apiVersion: "v1"
+  metadata:
+    name: "pagerduty-ldap-sync"
+  objects:
+    -
+      kind: "DeploymentConfig"
+      apiVersion: "v1"
+      metadata:
+        name: "pagerduty-ldap-sync"
+        labels:
+          template: "pagerduty-ldap-sync-template"
+      spec:
+        strategy:
+          type: "Recreate"
+        triggers:
+          -
+            type: "ConfigChange"
+        replicas: 1
+        selector:
+          name: "pagerduty-ldap-sync"
+        template:
+          metadata:
+            labels:
+              name: "pagerduty-ldap-sync"
+          spec:
+            containers:
+              -
+                command:
+                  - sh
+                  - -c
+                  - |
+                     . /root/source
+                     exec /src/slack_ldap_sync.py
+                name: "pagerduty-ldap-sync-container"
+                image: "${image_url}"
+                volumeMounts:
+                 - name: secrets
+                   mountPath: /root
+                resources:
+                  requests:
+                    memory: "80Mi"
+                    cpu: "15m"
+                  limits:
+                    memory: "80Mi"
+                    cpu: "15m"
+            volumes:
+             -
+               name: secrets
+               secret:
+                 secretName: pagerduty-ldap-secrets
+  parameters:
+    -
+      name: "image_url"
+      value: "{DOCKER_REGISTRY_URL}/pagerduty_tools/pagerduty_ldap_sync"
