@@ -124,13 +124,10 @@ def sync_pagerduty_ldap():
   if percent_slack_users_deleted > max_delete_failsafe:
     raise Exception('The failsafe threshold for deleting too many slack users was reached. No users were deleted.')
 
-  # delete_pagerduty_users_msg = 'The following pagerduty users should be deleted: %s' % str(pagerduty_users_to_be_deleted)
-  # delete_pagerduty_users_msg += '. This script codebase is located here: https://github.com/Symantec/pagerduty_ldap_sync'
-  # slack_message_pagerduty_channel(str(delete_pagerduty_users_msg))
-
   # After the failsafe is over, go through and delete all the users who should be deleted.
-  for pagerduty_id in pagerduty_users_to_be_deleted:
-    slack_message_pagerduty_channel(delete_pagerduty_user(pagerduty_api_key, pagerduty_id))
+  for pagerduty_user in pagerduty_users_to_be_deleted:
+    logger.debug('Starting the deletion of pagerduty user: %s') % pagerduty_user[0]
+    slack_message_pagerduty_channel(delete_pagerduty_user(pagerduty_api_key, pagerduty_user[0]))
 
 
 if __name__ == '__main__':

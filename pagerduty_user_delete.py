@@ -30,7 +30,6 @@ import json
 import argparse
 from datetime import datetime
 import logging
-import os
 
 
 class PagerDutyREST():
