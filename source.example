@@ -10,3 +10,4 @@ export AD_BINDDN="foo\user_name"
 export AD_BINDPW="password"
 export AD_SEARCHREQ_ATTRLIST='["mail", "active_employee_attribute=True"]'
 export AD_EMAIL_ATTRIBUTE="mail"
+export WHITE_LIST_USERS="test@example.com"

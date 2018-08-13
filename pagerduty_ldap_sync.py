@@ -112,12 +112,24 @@ def delete_pagerduty_user(pagerduty_api_key, pagerduty_user_email):
   return result
 
 
+def remove_white_list_users(pagerduty_users_to_be_deleted):
+    pagerduty_users = []
+    white_list_users = os.environ.get('PD_WHITE_LIST_USERS', '').lower().split(',')
+    for pagerduty_user_to_be_deleted in pagerduty_users_to_be_deleted:
+        if pagerduty_user_to_be_deleted[0] in white_list_users:
+            continue
+        else:
+            pagerduty_users.append(pagerduty_user_to_be_deleted)
+    return pagerduty_users
+
+
 def sync_pagerduty_ldap():
   logger.info('Looking for pagerduty users to delete that do not exist or are not active in corp LDAP')
   pagerduty                     = pygerduty.v2.PagerDuty(pagerduty_api_key)
   all_pagerduty_users           = get_all_pagerduty_users(pagerduty)
   all_active_ldap_users         = get_all_active_ad_users()
   pagerduty_users_to_be_deleted = get_pagerduty_users_not_in_ldap(all_pagerduty_users, all_active_ldap_users)
+  pagerduty_users_to_be_deleted = remove_white_list_users(pagerduty_users_to_be_deleted)
   percent_slack_users_deleted   = float(len(pagerduty_users_to_be_deleted)) / len(all_pagerduty_users)
   # raise exception if we try to delete too many users as a failsafe.
 
