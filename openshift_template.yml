@@ -54,4 +54,4 @@
   parameters:
     -
       name: "image_url"
-      value: "{DOCKER_REGISTRY_URL}/pagerduty_tools/pagerduty_ldap_sync"
+      value: "{DOCKER_REGISTRY_URL}/pagerduty_tools/pagerduty_ldap_sync:latest"
