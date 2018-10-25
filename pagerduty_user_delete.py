@@ -58,7 +58,6 @@ class PagerDutyREST():
             # Try/except for cases where getting a single resource
             try:
                 if r['more']:
-                    # FIXME: Remove when teams can have total in params
                     if not resource:
                         resource = endpoint[1:]
                     payload['offset'] = 100
@@ -425,7 +424,7 @@ def main(access_token, user_email, from_email):
     logging.info('User ID: {id}'.format(id=user_id))
     # Check for open incidents user is currently in use for
     incidents = delete_user.list_open_incidents(user_id)
-    print json.dumps(incidents)
+    print(json.dumps(incidents))
     if incidents['total'] > 0:
         incident_output = ""
         incident_ids = []

@@ -57,10 +57,8 @@ def get_all_active_ad_users():
   attrlist              = [s.encode('utf-8') for s in searchreq_attrlist]
   msgid                 = l.search_ext(ad_basedn, ldap.SCOPE_SUBTREE, search_flt, attrlist=attrlist, serverctrls=[req_ctrl])
   all_ad_users          = {}
-  pages                 = 0
 
   while True:
-    pages += 1
     rtype, rdata, rmsgid, serverctrls = l.result3(msgid,resp_ctrl_classes=known_ldap_resp_ctrls)
     for entry in rdata:
       if 'mail' in entry[1] and entry[1]['mail'][0]:
@@ -80,7 +78,6 @@ def get_all_active_ad_users():
         break
     else:
       raise Exception("AD query Warning: Server ignores RFC 2696 control.")
-      break
   l.unbind_s()
   return all_ad_users
 
